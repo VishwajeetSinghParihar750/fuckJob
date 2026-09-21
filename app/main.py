@@ -134,6 +134,10 @@ def dashboard(session: Session = Depends(get_session)) -> dict:
     automation = session.get(SystemSetting, "automation_status")
     automation_status = automation.value if automation else {"state": "starting"}
     automation_status.setdefault("poll_interval_minutes", get_settings().automation_poll_interval_minutes)
+    recent_jobs = session.scalars(select(Job).order_by(Job.first_seen_at.desc()).limit(8)).all()
+    recent_escalations = session.scalars(
+        select(Escalation).where(Escalation.status == "open").order_by(Escalation.created_at.desc()).limit(8)
+    ).all()
     return {
         "now": datetime.now(timezone.utc),
         "live_policy": policy_payload(session),
@@ -153,8 +157,27 @@ def dashboard(session: Session = Depends(get_session)) -> dict:
         },
         "model_usage": {"calls": int(cost_calls or 0), "input_tokens": int(input_tokens or 0), "output_tokens": int(output_tokens or 0)},
         "agent_population": agent_population,
-        "recent_jobs": session.scalars(select(Job).order_by(Job.first_seen_at.desc()).limit(8)).all(),
-        "recent_escalations": session.scalars(select(Escalation).where(Escalation.status == "open").order_by(Escalation.created_at.desc()).limit(8)).all(),
+        "recent_jobs": [
+            {
+                "id": job.id,
+                "company": job.company,
+                "title": job.title,
+                "location": job.location,
+                "status": job.status.value,
+                "url": job.url,
+                "first_seen_at": job.first_seen_at.isoformat(),
+            }
+            for job in recent_jobs
+        ],
+        "recent_escalations": [
+            {
+                "id": escalation.id,
+                "category": escalation.category,
+                "question": escalation.question,
+                "created_at": escalation.created_at.isoformat(),
+            }
+            for escalation in recent_escalations
+        ],
     }
 
 

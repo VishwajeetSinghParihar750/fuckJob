@@ -13,6 +13,7 @@ from app.connectors.ats import _carrerlift
 from app.contacts import ContactDiscovery
 from app.db import Base, SessionLocal, engine, initialize_database
 from app.evolution import EvolutionService, InsufficientEvidenceError
+from app.main import dashboard as dashboard_snapshot
 from app.models import AgentSpec, Assessment, Domain, Job, JobSource, SpecStatus
 from app.models import SystemSetting
 from app.safety import LivePolicy, PolicyBlockedError, enforce_application_policy
@@ -204,6 +205,25 @@ class CoreSystemTests(unittest.TestCase):
         setting = self.session.get(SystemSetting, AUTOMATION_STATUS_KEY)
         self.assertEqual(result["state"], "waiting_for_profile")
         self.assertEqual(setting.value["state"], "waiting_for_profile")
+
+    def test_dashboard_serializes_job_rows_as_json_data(self):
+        source = JobSource(provider="lever", name="Example", board_url="https://jobs.lever.co/example")
+        self.session.add(source)
+        self.session.commit()
+        self.session.add(
+            Job(
+                source_id=source.id,
+                provider_job_id="dashboard-1",
+                url="https://example.test/job/dashboard-1",
+                company="Example",
+                title="Backend Engineer",
+                description="Python",
+                fingerprint="dashboard-1",
+            )
+        )
+        self.session.commit()
+        snapshot = dashboard_snapshot(self.session)
+        self.assertEqual(snapshot["recent_jobs"][0]["title"], "Backend Engineer")
 
 
 if __name__ == "__main__":
