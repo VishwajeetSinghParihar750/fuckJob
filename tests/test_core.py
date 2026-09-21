@@ -6,6 +6,7 @@ from pathlib import Path
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from app.bootstrap import bootstrap_agent_specs
+from app.contacts import ContactDiscovery
 from app.db import Base, SessionLocal, engine, initialize_database
 from app.evolution import EvolutionService, InsufficientEvidenceError
 from app.models import AgentSpec, Assessment, Domain, Job, JobSource, SpecStatus
@@ -147,6 +148,25 @@ class CoreSystemTests(unittest.TestCase):
         self.assertEqual(artifact.kind, "tailored_resume_pdf")
         self.assertTrue(resume_path.is_file())
         self.assertTrue(resume_path.read_bytes().startswith(b"%PDF"))
+
+    def test_contact_discovery_only_records_explicit_public_addresses(self):
+        source = JobSource(provider="lever", name="Example", board_url="https://jobs.lever.co/example")
+        self.session.add(source)
+        self.session.commit()
+        job = Job(
+            source_id=source.id,
+            provider_job_id="contact-1",
+            url="https://example.test/job/contact-1",
+            company="Example",
+            title="Software Engineer",
+            description="For accessibility questions, email jobs@example.test. Do not infer other addresses.",
+            fingerprint="contact-1",
+        )
+        self.session.add(job)
+        self.session.commit()
+        contacts = ContactDiscovery().discover(self.session, job)
+        self.assertEqual([contact.email for contact in contacts], ["jobs@example.test"])
+        self.assertEqual(contacts[0].source, "public_job_description")
 
 
 if __name__ == "__main__":

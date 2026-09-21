@@ -199,6 +199,20 @@ class OutreachMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class Contact(Base):
+    __tablename__ = "contacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(500), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (UniqueConstraint("job_id", "email", name="uq_job_contact_email"),)
+
+
 class Outcome(Base):
     __tablename__ = "outcomes"
 

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import httpx
+from temporalio import activity
 
 from app.browser import PlaywrightApplicationBrowser
 from app.db import SessionLocal
@@ -10,6 +11,7 @@ from app.safety import PolicyBlockedError, enforce_application_policy, enforce_o
 from app.services import CandidateProfileService, PolicyService, SourceService
 
 
+@activity.defn
 async def poll_source_activity(source_id: str) -> dict:
     with SessionLocal() as session:
         source = session.get(JobSource, source_id)
@@ -18,6 +20,7 @@ async def poll_source_activity(source_id: str) -> dict:
         return {"status": "completed", **SourceService.poll(session, source)}
 
 
+@activity.defn
 async def prepare_application_activity(application_id: str) -> dict:
     with SessionLocal() as session:
         application = session.get(Application, application_id)
@@ -37,6 +40,7 @@ async def prepare_application_activity(application_id: str) -> dict:
         return {"status": "ready"}
 
 
+@activity.defn
 async def execute_application_browser_activity(application_id: str) -> dict:
     with SessionLocal() as session:
         application = session.get(Application, application_id)
@@ -74,6 +78,7 @@ async def execute_application_browser_activity(application_id: str) -> dict:
         return {"status": result.status, "evidence_uri": result.evidence_uri, "detail": result.detail}
 
 
+@activity.defn
 async def send_outreach_activity(message_id: str) -> dict:
     with SessionLocal() as session:
         message = session.get(OutreachMessage, message_id)

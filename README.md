@@ -15,6 +15,16 @@ docker compose up --build
 Open the operator dashboard at `http://localhost:5173`, the API docs at
 `http://localhost:8000/docs`, and Temporal UI at `http://localhost:8081`.
 
+For a remote host, the Compose defaults bind these ports to the host loopback
+interface. Access them securely from your workstation with:
+
+```bash
+ssh -L 5173:127.0.0.1:5173 -L 8000:127.0.0.1:8000 -L 8081:127.0.0.1:8081 ubuntu@YOUR_SERVER
+```
+
+Then use the same localhost URLs above. Set `HOST_BIND_ADDRESS=0.0.0.0` only
+behind authenticated ingress or a VPN.
+
 1. Create an approved candidate profile with factual skills, work history,
    projects, links, and application-answer facts.
 2. Add Greenhouse or Lever board URLs in **Sources**.

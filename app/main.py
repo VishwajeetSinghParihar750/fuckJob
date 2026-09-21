@@ -35,6 +35,7 @@ from app.schemas import (
     AuditCreate,
     CandidateProfileCreate,
     CandidateProfileRead,
+    ContactRead,
     EscalationResolve,
     EvolutionRunRequest,
     ExperimentCreate,
@@ -62,6 +63,7 @@ from app.projects import ProjectService
 from app.resumes import ResumeService
 from app.qualification import QualificationService
 from app.response_analyzer import ResponseAnalyzer
+from app.contacts import ContactDiscovery
 
 
 EXTERNAL_ACTIONS = Counter("career_external_action_requests_total", "External action requests", ["action", "result"])
@@ -444,6 +446,14 @@ async def create_outreach(job_id: str, payload: OutreachCreate, session: Session
             )
             session.commit()
     return {"id": message.id, "status": message.status}
+
+
+@app.post("/api/jobs/{job_id}/contacts/discover", response_model=list[ContactRead])
+def discover_contacts(job_id: str, session: Session = Depends(get_session)):
+    job = session.get(Job, job_id)
+    if not job:
+        raise not_found("Job")
+    return ContactDiscovery().discover(session, job)
 
 
 @app.post("/api/jobs/{job_id}/outcomes", status_code=status.HTTP_201_CREATED)

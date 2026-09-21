@@ -183,6 +183,15 @@ class OutreachCreate(BaseModel):
     send: bool = False
 
 
+class ContactRead(ORMModel):
+    id: str
+    job_id: str
+    email: str
+    name: str | None
+    source: str
+    confidence: float
+
+
 class OutcomeCreate(BaseModel):
     application_id: str | None = None
     stage: OutcomeStage
