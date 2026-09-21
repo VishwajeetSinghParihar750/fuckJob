@@ -4,6 +4,7 @@ import unittest
 import asyncio
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
@@ -14,7 +15,8 @@ from app.contacts import ContactDiscovery
 from app.db import Base, SessionLocal, engine, initialize_database
 from app.evolution import EvolutionService, InsufficientEvidenceError
 from app.main import dashboard as dashboard_snapshot
-from app.models import AgentSpec, Assessment, Domain, Job, JobSource, SpecStatus
+from app.model_client import ModelResult
+from app.models import AgentSpec, Assessment, CostEvent, Domain, Job, JobSource, SpecStatus
 from app.models import SystemSetting
 from app.safety import LivePolicy, PolicyBlockedError, enforce_application_policy
 from app.qualification import QualificationService
@@ -127,6 +129,36 @@ class CoreSystemTests(unittest.TestCase):
         assessment = QualificationService().assess(self.session, job, spec)
         self.assertGreater(assessment.relevance_score, 0.5)
         self.assertEqual(assessment.evidence["mode"], "heuristic_fallback")
+
+    def test_qualification_records_usage_for_a_successful_model_verdict(self):
+        CandidateProfileService.create(self.session, {"skills": ["Python", "Postgres"]}, approve=True)
+        source = JobSource(provider="greenhouse", name="Example", board_url="https://boards.greenhouse.io/example")
+        self.session.add(source)
+        self.session.commit()
+        job = Job(
+            source_id=source.id,
+            provider_job_id="model-qualify-1",
+            url="https://example.test/job/model-qualify-1",
+            company="Example",
+            title="Backend Engineer",
+            description="Build Python services.",
+            fingerprint="model-qualify-1",
+        )
+        self.session.add(job)
+        self.session.commit()
+        spec = QualificationService().default_spec(self.session)
+        response = ModelResult(
+            text='{"relevance_score": 0.9, "rationale": "Explicit Python evidence.", "evidence": {"skills": ["Python"]}}',
+            model="test-model",
+            input_tokens=17,
+            output_tokens=9,
+        )
+        with patch("app.qualification.ModelClient") as model_client:
+            model_client.return_value.complete.return_value = response
+            assessment = QualificationService().assess(self.session, job, spec)
+        event = self.session.query(CostEvent).one()
+        self.assertEqual(assessment.relevance_score, 0.9)
+        self.assertEqual((event.model, event.input_tokens, event.output_tokens), ("test-model", 17, 9))
 
     def test_resume_renderer_creates_a_pdf_artifact_from_approved_facts(self):
         CandidateProfileService.create(

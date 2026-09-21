@@ -23,7 +23,7 @@ class QualificationService:
         profile = CandidateProfileService.approved(session)
         if not profile:
             raise ValueError("An approved candidate profile is required before qualification.")
-        verdict = self._model_verdict(job, profile.facts, spec)
+        verdict = self._model_verdict(session, job, profile.facts, spec)
         if verdict is None:
             verdict = self._heuristic_verdict(job, profile.facts)
         assessment = Assessment(
@@ -48,7 +48,9 @@ class QualificationService:
             raise ValueError("No Job Finder champion exists.")
         return spec
 
-    def _model_verdict(self, job: Job, facts: dict[str, Any], spec: AgentSpec) -> dict[str, Any] | None:
+    def _model_verdict(
+        self, session: Session, job: Job, facts: dict[str, Any], spec: AgentSpec
+    ) -> dict[str, Any] | None:
         client = ModelClient()
         try:
             result = client.complete(
