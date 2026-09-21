@@ -1,7 +1,25 @@
 from temporalio.client import Client
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from app.config import get_settings
-from app.workflows import ApplicationWorkflow, OutreachWorkflow, PollJobSourceWorkflow
+from app.workflows import ApplicationWorkflow, ContinuousDiscoveryWorkflow, OutreachWorkflow, PollJobSourceWorkflow
+
+
+async def ensure_continuous_discovery(client: Client | None = None) -> bool:
+    settings = get_settings()
+    if not settings.automation_enabled:
+        return False
+    temporal = client or await Client.connect(settings.temporal_address, namespace=settings.temporal_namespace)
+    try:
+        await temporal.start_workflow(
+            ContinuousDiscoveryWorkflow.run,
+            settings.automation_poll_interval_minutes,
+            id="continuous-discovery",
+            task_queue=settings.temporal_task_queue,
+        )
+        return True
+    except WorkflowAlreadyStartedError:
+        return False
 
 
 async def start_application(application_id: str) -> str:

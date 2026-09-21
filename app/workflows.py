@@ -1,9 +1,16 @@
 from datetime import timedelta
 
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
-    from app.activities import execute_application_browser_activity, poll_source_activity, prepare_application_activity, send_outreach_activity
+    from app.activities import (
+        execute_application_browser_activity,
+        poll_source_activity,
+        prepare_application_activity,
+        run_discovery_cycle_activity,
+        send_outreach_activity,
+    )
 
 
 @workflow.defn
@@ -11,6 +18,19 @@ class PollJobSourceWorkflow:
     @workflow.run
     async def run(self, source_id: str) -> dict:
         return await workflow.execute_activity(poll_source_activity, source_id, start_to_close_timeout=timedelta(minutes=2))
+
+
+@workflow.defn
+class ContinuousDiscoveryWorkflow:
+    @workflow.run
+    async def run(self, poll_interval_minutes: int) -> None:
+        while True:
+            await workflow.execute_activity(
+                run_discovery_cycle_activity,
+                start_to_close_timeout=timedelta(minutes=15),
+                retry_policy=RetryPolicy(maximum_attempts=3),
+            )
+            await workflow.sleep(timedelta(minutes=poll_interval_minutes))
 
 
 @workflow.defn

@@ -28,9 +28,10 @@ keep the API and Temporal bindings private.
 
 1. Create an approved candidate profile with factual skills, work history,
    projects, links, and application-answer facts.
-2. Add Greenhouse or Lever board URLs in **Sources**.
-3. Trigger a source poll. Jobs are normalized and deduplicated before policy
-   evaluation.
+2. Add public Greenhouse, Lever, or Carrerlift URLs in **Sources**. The
+   scheduler then polls enabled sources continuously; manual polling is only a
+   diagnostic control.
+3. Jobs are normalized and deduplicated before model-backed policy evaluation.
 4. Review policy assignments and audited scores in the dashboard.
 5. Use the API to render a factual, job-specific PDF resume or generate a
    truthful project scaffold; both return immutable artifact records.

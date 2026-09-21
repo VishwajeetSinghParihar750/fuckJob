@@ -15,6 +15,9 @@ type Dashboard = {
   live_policy: Policy;
   counts: Record<string, number>;
   agent_population: Record<string, Record<string, number>>;
+  automation: { state: string; completed_at?: string; poll_interval_minutes?: number; jobs_created?: number; jobs_assessed?: number; jobs_qualified?: number; blocked_reason?: string; errors?: Array<{ message: string }> };
+  funnel: { jobs_by_status: Record<string, number>; applications_by_status: Record<string, number>; outreach_by_status: Record<string, number>; outcomes_by_stage: Record<string, number> };
+  model_usage: { calls: number; input_tokens: number; output_tokens: number };
   recent_jobs: Job[];
   recent_escalations: Array<{ id: string; category: string; question: string; created_at: string }>;
 };
@@ -46,7 +49,11 @@ function App() {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
 
   async function addSource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -108,15 +115,19 @@ function App() {
       <Metric value={dashboard?.counts.sources ?? 0} label="ATS sources" />
       <Metric value={dashboard?.counts.jobs ?? 0} label="canonical jobs" />
       <Metric value={dashboard?.counts.applications ?? 0} label="applications" />
+      <Metric value={dashboard?.funnel.jobs_by_status.qualified ?? 0} label="qualified jobs" />
       <Metric value={dashboard?.counts.outreach_messages ?? 0} label="email outreach" />
+      <Metric value={(dashboard?.model_usage.input_tokens ?? 0) + (dashboard?.model_usage.output_tokens ?? 0)} label="model tokens" />
       <Metric value={dashboard?.counts.open_escalations ?? 0} label="open escalations" emphasis />
     </section>
 
     <section className="two-column">
       <article className="card">
         <div className="section-head"><div><p className="eyebrow">DISCOVERY</p><h2>Direct ATS sources</h2></div></div>
+        <p className="hint">Autopilot: <strong>{dashboard?.automation.state ?? "starting"}</strong> · every {dashboard?.automation.poll_interval_minutes ?? 30} min{dashboard?.automation.completed_at ? ` · last cycle ${new Date(dashboard.automation.completed_at).toLocaleString()}` : ""}</p>
+        {dashboard?.automation.blocked_reason && <p className="hint">{dashboard.automation.blocked_reason}</p>}
         <form className="source-form" onSubmit={addSource}>
-          <select name="provider" aria-label="Provider"><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option></select>
+          <select name="provider" aria-label="Provider"><option value="carrerlift">Carrerlift</option><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option></select>
           <input name="name" placeholder="Company name" required />
           <input name="board_url" type="url" placeholder="https://boards.greenhouse.io/company" required />
           <button>Add source</button>
@@ -157,6 +168,24 @@ function App() {
       </article>
     </section>
 
+    <section className="two-column">
+      <article className="card">
+        <p className="eyebrow">PIPELINE TRACE</p><h2>What the system has done</h2>
+        <div className="trace-grid">
+          <Trace label="Discovered" value={dashboard?.funnel.jobs_by_status.discovered ?? 0} />
+          <Trace label="Qualified" value={dashboard?.funnel.jobs_by_status.qualified ?? 0} />
+          <Trace label="Submitted" value={dashboard?.funnel.applications_by_status.submitted ?? 0} />
+          <Trace label="Interviews" value={dashboard?.funnel.outcomes_by_stage.interview ?? 0} />
+          <Trace label="Offers" value={dashboard?.funnel.outcomes_by_stage.offer ?? 0} />
+          <Trace label="Model calls" value={dashboard?.model_usage.calls ?? 0} />
+        </div>
+      </article>
+      <article className="card">
+        <p className="eyebrow">AUTO-REFRESH</p><h2>Live telemetry</h2>
+        <p className="hint">This dashboard refreshes every 15 seconds. Temporal UI remains the durable workflow trace; model tokens, source polling, qualification, submissions, outcomes, and escalations are persisted in Postgres.</p>
+      </article>
+    </section>
+
     <section className="card">
       <div className="section-head"><div><p className="eyebrow">EVOLUTION</p><h2>Champion / challenger populations</h2></div></div>
       <div className="population">
@@ -171,5 +200,8 @@ function Metric({ value, label, emphasis = false }: { value: number; label: stri
   return <article className={`metric ${emphasis ? "emphasis" : ""}`}><strong>{value}</strong><span>{label}</span></article>;
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+function Trace({ value, label }: { value: number; label: string }) {
+  return <div><strong>{value}</strong><span>{label}</span></div>;
+}
 
+createRoot(document.getElementById("root")!).render(<App />);

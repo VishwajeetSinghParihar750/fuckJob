@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.model_client import ModelClient
@@ -63,10 +64,19 @@ class QualificationService:
             )
             if not result:
                 return None
+            session.add(
+                CostEvent(
+                    agent_spec_id=spec.id,
+                    job_id=job.id,
+                    model=result.model,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                )
+            )
             verdict = json.loads(result.text.strip().removeprefix("```json").removesuffix("```").strip())
             score = min(1.0, max(0.0, float(verdict["relevance_score"])))
             return {"relevance_score": score, "rationale": str(verdict["rationale"]), "evidence": dict(verdict.get("evidence") or {})}
-        except (ValueError, KeyError, json.JSONDecodeError):
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError):
             return None
 
     def _heuristic_verdict(self, job: Job, facts: dict[str, Any]) -> dict[str, Any]:

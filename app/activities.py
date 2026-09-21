@@ -1,14 +1,86 @@
 from datetime import datetime, timezone
 
 import httpx
+from sqlalchemy import select
 from temporalio import activity
 
 from app.browser import PlaywrightApplicationBrowser
 from app.db import SessionLocal
 from app.integrations.gmail import GmailClient, GmailConfigurationError
-from app.models import Application, ApplicationStatus, Artifact, Escalation, Job, JobSource, JobStatus, OutreachMessage
+from app.models import Application, ApplicationStatus, Artifact, Assessment, Escalation, Job, JobSource, JobStatus, OutreachMessage, SystemSetting
+from app.qualification import QualificationService
 from app.safety import PolicyBlockedError, enforce_application_policy, enforce_outreach_policy
 from app.services import CandidateProfileService, PolicyService, SourceService
+
+
+AUTOMATION_STATUS_KEY = "automation_status"
+
+
+@activity.defn
+async def run_discovery_cycle_activity() -> dict:
+    """Poll every enabled public source and qualify only unseen jobs.
+
+    This workflow never submits an application. Submission remains a separate,
+    explicit policy-controlled workflow because no source page can establish a
+    truthful answer to application questions.
+    """
+
+    started_at = datetime.now(timezone.utc)
+    result: dict = {
+        "state": "running",
+        "started_at": started_at.isoformat(),
+        "completed_at": None,
+        "sources_polled": 0,
+        "jobs_fetched": 0,
+        "jobs_created": 0,
+        "jobs_updated": 0,
+        "jobs_assessed": 0,
+        "jobs_qualified": 0,
+        "errors": [],
+    }
+    with SessionLocal() as session:
+        sources = session.scalars(select(JobSource).where(JobSource.enabled.is_(True))).all()
+        if not sources:
+            result["state"] = "waiting_for_sources"
+        for source in sources:
+            try:
+                outcome = SourceService.poll(session, source)
+                result["sources_polled"] += 1
+                for key in ("fetched", "created", "updated"):
+                    result[f"jobs_{key}"] += int(outcome.get(key, 0))
+            except (httpx.HTTPError, ValueError) as exc:
+                result["errors"].append({"source_id": source.id, "message": str(exc)[:500]})
+        profile = CandidateProfileService.approved(session)
+        if not profile:
+            result["state"] = "waiting_for_profile"
+            result["blocked_reason"] = "An approved factual candidate profile is required before qualification."
+        elif sources:
+            qualification = QualificationService()
+            spec = qualification.default_spec(session)
+            candidates = session.scalars(
+                select(Job).where(Job.status == JobStatus.DISCOVERED).order_by(Job.first_seen_at.asc()).limit(100)
+            ).all()
+            for job in candidates:
+                exists = session.scalar(
+                    select(Assessment.id)
+                    .where(Assessment.job_id == job.id, Assessment.agent_spec_id == spec.id)
+                    .limit(1)
+                )
+                if exists:
+                    continue
+                assessment = qualification.assess(session, job, spec)
+                result["jobs_assessed"] += 1
+                if assessment.relevance_score >= float(spec.config.get("thresholds", {}).get("minimum_relevance", 0.65)):
+                    result["jobs_qualified"] += 1
+            result["state"] = "running"
+        result["completed_at"] = datetime.now(timezone.utc).isoformat()
+        setting = session.get(SystemSetting, AUTOMATION_STATUS_KEY)
+        if setting:
+            setting.value = result
+        else:
+            session.add(SystemSetting(key=AUTOMATION_STATUS_KEY, value=result))
+        session.commit()
+    return result
 
 
 @activity.defn

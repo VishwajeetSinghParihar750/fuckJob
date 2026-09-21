@@ -1,15 +1,20 @@
 import os
 import tempfile
 import unittest
+import asyncio
+import json
 from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from app.bootstrap import bootstrap_agent_specs
+from app.activities import AUTOMATION_STATUS_KEY, run_discovery_cycle_activity
+from app.connectors.ats import _carrerlift
 from app.contacts import ContactDiscovery
 from app.db import Base, SessionLocal, engine, initialize_database
 from app.evolution import EvolutionService, InsufficientEvidenceError
 from app.models import AgentSpec, Assessment, Domain, Job, JobSource, SpecStatus
+from app.models import SystemSetting
 from app.safety import LivePolicy, PolicyBlockedError, enforce_application_policy
 from app.qualification import QualificationService
 from app.resumes import ResumeService
@@ -167,6 +172,38 @@ class CoreSystemTests(unittest.TestCase):
         contacts = ContactDiscovery().discover(self.session, job)
         self.assertEqual([contact.email for contact in contacts], ["jobs@example.test"])
         self.assertEqual(contacts[0].source, "public_job_description")
+
+    def test_carrerlift_connector_uses_public_jobposting_and_direct_apply_url(self):
+        listing = '<a href="/jobs/example-backend-engineer">Backend Engineer</a>'
+        detail = """
+        <script type="application/ld+json">{"@type":"JobPosting","title":"Backend Engineer","description":"<p>Python and Redis</p>","hiringOrganization":{"name":"Example"},"identifier":{"value":"job-123"},"jobLocationType":"TELECOMMUTE"}</script>
+        <a href="https://apply.example.test/123">Apply now</a>
+        """
+
+        class Response:
+            status_code = 200
+
+            def __init__(self, text):
+                self.text = text
+
+            def raise_for_status(self):
+                return None
+
+        class Client:
+            def get(self, url):
+                return Response(listing if url.startswith("https://www.carrerlift.in/jobs?") else detail)
+
+        jobs = _carrerlift("https://www.carrerlift.in/jobs?location=Remote", Client())
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0].provider_job_id, "job-123")
+        self.assertEqual(jobs[0].url, "https://apply.example.test/123")
+        self.assertEqual(jobs[0].location, "Remote")
+
+    def test_discovery_cycle_persists_waiting_status_without_sources(self):
+        result = asyncio.run(run_discovery_cycle_activity())
+        setting = self.session.get(SystemSetting, AUTOMATION_STATUS_KEY)
+        self.assertEqual(result["state"], "waiting_for_profile")
+        self.assertEqual(setting.value["state"], "waiting_for_profile")
 
 
 if __name__ == "__main__":

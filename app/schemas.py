@@ -25,7 +25,7 @@ class CandidateProfileRead(ORMModel):
 
 
 class JobSourceCreate(BaseModel):
-    provider: str = Field(pattern="^(greenhouse|lever)$")
+    provider: str = Field(pattern="^(greenhouse|lever|carrerlift)$")
     name: str = Field(min_length=1, max_length=200)
     board_url: HttpUrl
     enabled: bool = True

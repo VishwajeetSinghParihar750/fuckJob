@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.bootstrap import bootstrap_agent_specs
+from app.config import get_settings
 from app.db import SessionLocal, get_session, initialize_database
 from app.evolution import EvolutionService, InsufficientEvidenceError
 from app.models import (
@@ -16,12 +17,14 @@ from app.models import (
     Application,
     ApplicationStatus,
     Assessment,
+    CostEvent,
     Escalation,
     Job,
     JobSource,
     JobStatus,
     Outcome,
     OutreachMessage,
+    SystemSetting,
 )
 from app.safety import PolicyBlockedError, enforce_application_policy, enforce_outreach_policy
 from app.schemas import (
@@ -117,6 +120,20 @@ def dashboard(session: Session = Depends(get_session)) -> dict:
     agent_population: dict[str, dict[str, int]] = {}
     for domain, spec_status, total in agent_rows:
         agent_population.setdefault(domain.value, {})[spec_status.value] = total
+    def grouped_counts(column) -> dict[str, int]:
+        rows = session.execute(select(column, func.count()).group_by(column)).all()
+        return {getattr(value, "value", str(value)): int(total) for value, total in rows}
+
+    cost_calls, input_tokens, output_tokens = session.execute(
+        select(
+            func.count(CostEvent.id),
+            func.coalesce(func.sum(CostEvent.input_tokens), 0),
+            func.coalesce(func.sum(CostEvent.output_tokens), 0),
+        )
+    ).one()
+    automation = session.get(SystemSetting, "automation_status")
+    automation_status = automation.value if automation else {"state": "starting"}
+    automation_status.setdefault("poll_interval_minutes", get_settings().automation_poll_interval_minutes)
     return {
         "now": datetime.now(timezone.utc),
         "live_policy": policy_payload(session),
@@ -127,6 +144,14 @@ def dashboard(session: Session = Depends(get_session)) -> dict:
             "outreach_messages": count(OutreachMessage),
             "open_escalations": int(session.scalar(select(func.count()).select_from(Escalation).where(Escalation.status == "open")) or 0),
         },
+        "automation": automation_status,
+        "funnel": {
+            "jobs_by_status": grouped_counts(Job.status),
+            "applications_by_status": grouped_counts(Application.status),
+            "outreach_by_status": grouped_counts(OutreachMessage.status),
+            "outcomes_by_stage": grouped_counts(Outcome.stage),
+        },
+        "model_usage": {"calls": int(cost_calls or 0), "input_tokens": int(input_tokens or 0), "output_tokens": int(output_tokens or 0)},
         "agent_population": agent_population,
         "recent_jobs": session.scalars(select(Job).order_by(Job.first_seen_at.desc()).limit(8)).all(),
         "recent_escalations": session.scalars(select(Escalation).where(Escalation.status == "open").order_by(Escalation.created_at.desc()).limit(8)).all(),

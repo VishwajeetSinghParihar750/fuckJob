@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     model_base_url: str | None = None
     model_api_key: str | None = None
     model_name: str | None = None
+    automation_enabled: bool = True
+    automation_poll_interval_minutes: int = 30
     gmail_sender: str | None = None
     gmail_client_id: str | None = None
     gmail_client_secret: str | None = None
