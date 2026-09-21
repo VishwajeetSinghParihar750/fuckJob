@@ -12,4 +12,5 @@ COPY entrypoint.sh /usr/local/bin/dashboard-entrypoint
 COPY --from=build /dashboard/dist /usr/share/nginx/html
 RUN chmod +x /usr/local/bin/dashboard-entrypoint
 ENTRYPOINT ["/usr/local/bin/dashboard-entrypoint"]
+CMD ["nginx", "-g", "daemon off;"]
 EXPOSE 80
