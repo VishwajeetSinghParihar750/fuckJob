@@ -32,6 +32,7 @@ class ModelClient:
             json={
                 "model": settings.model_name,
                 "temperature": temperature,
+                "max_tokens": settings.model_max_output_tokens,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             },
             timeout=60,
@@ -52,4 +53,3 @@ class ModelClient:
             return None
         text = result.text.strip().removeprefix("```json").removesuffix("```").strip()
         return json.loads(text)
-

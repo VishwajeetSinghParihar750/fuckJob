@@ -4,6 +4,7 @@ import unittest
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
@@ -15,7 +16,7 @@ from app.contacts import ContactDiscovery
 from app.db import Base, SessionLocal, engine, initialize_database
 from app.evolution import EvolutionService, InsufficientEvidenceError
 from app.main import dashboard as dashboard_snapshot
-from app.model_client import ModelResult
+from app.model_client import ModelClient, ModelResult
 from app.models import AgentSpec, Assessment, CostEvent, Domain, Job, JobSource, SpecStatus
 from app.models import SystemSetting
 from app.safety import LivePolicy, PolicyBlockedError, enforce_application_policy
@@ -159,6 +160,26 @@ class CoreSystemTests(unittest.TestCase):
         event = self.session.query(CostEvent).one()
         self.assertEqual(assessment.relevance_score, 0.9)
         self.assertEqual((event.model, event.input_tokens, event.output_tokens), ("test-model", 17, 9))
+
+    def test_model_client_enforces_configured_output_cap(self):
+        class Response:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"model": "test-model", "choices": [{"message": {"content": "{}"}}]}
+
+        settings = SimpleNamespace(
+            model_base_url="https://model.example.test",
+            model_api_key="test-key",
+            model_name="test-model",
+            model_max_output_tokens=321,
+        )
+        with patch("app.model_client.get_settings", return_value=settings), patch(
+            "app.model_client.httpx.post", return_value=Response()
+        ) as post:
+            ModelClient().complete("system", "prompt")
+        self.assertEqual(post.call_args.kwargs["json"]["max_tokens"], 321)
 
     def test_resume_renderer_creates_a_pdf_artifact_from_approved_facts(self):
         CandidateProfileService.create(
