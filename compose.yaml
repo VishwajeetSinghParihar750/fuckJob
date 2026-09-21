@@ -35,7 +35,7 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "${HOST_BIND_ADDRESS:-127.0.0.1}:9001:9001"
+      - "${MINIO_BIND_ADDRESS:-127.0.0.1}:9001:9001"
     volumes:
       - minio-data:/data
 
@@ -52,7 +52,7 @@ services:
       POSTGRES_USER: career
       POSTGRES_PWD: career
     ports:
-      - "${HOST_BIND_ADDRESS:-127.0.0.1}:7233:7233"
+      - "${TEMPORAL_BIND_ADDRESS:-127.0.0.1}:7233:7233"
 
   temporal-ui:
     image: temporalio/ui:2.26.2
@@ -63,7 +63,7 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:5173
     ports:
-      - "${HOST_BIND_ADDRESS:-127.0.0.1}:8081:8080"
+      - "${TEMPORAL_UI_BIND_ADDRESS:-127.0.0.1}:8081:8080"
 
   api:
     build: .
@@ -85,7 +85,7 @@ services:
       temporal:
         condition: service_started
     ports:
-      - "${HOST_BIND_ADDRESS:-127.0.0.1}:8000:8000"
+      - "${API_BIND_ADDRESS:-127.0.0.1}:8000:8000"
 
   worker:
     build:
@@ -116,8 +116,11 @@ services:
       - api
     environment:
       API_UPSTREAM: api
+      DASHBOARD_AUTH_REALM: ${DASHBOARD_AUTH_REALM:-off}
+      DASHBOARD_BASIC_AUTH_USER: ${DASHBOARD_BASIC_AUTH_USER:-}
+      DASHBOARD_BASIC_AUTH_PASSWORD: ${DASHBOARD_BASIC_AUTH_PASSWORD:-}
     ports:
-      - "${HOST_BIND_ADDRESS:-127.0.0.1}:5173:80"
+      - "${DASHBOARD_BIND_ADDRESS:-127.0.0.1}:5173:80"
 
 volumes:
   postgres-data:

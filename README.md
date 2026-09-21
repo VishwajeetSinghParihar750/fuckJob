@@ -22,8 +22,9 @@ interface. Access them securely from your workstation with:
 ssh -L 5173:127.0.0.1:5173 -L 8000:127.0.0.1:8000 -L 8081:127.0.0.1:8081 ubuntu@YOUR_SERVER
 ```
 
-Then use the same localhost URLs above. Set `HOST_BIND_ADDRESS=0.0.0.0` only
-behind authenticated ingress or a VPN.
+Then use the same localhost URLs above. To publish the dashboard, set only
+`DASHBOARD_BIND_ADDRESS=0.0.0.0` and enable its basic authentication variables;
+keep the API and Temporal bindings private.
 
 1. Create an approved candidate profile with factual skills, work history,
    projects, links, and application-answer facts.
